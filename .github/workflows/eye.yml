@@ -1,4 +1,4 @@
-name: Ping Website Every 10 Minutes
+name: Blink eye
 
 permissions:
   contents: write  # Allow push to repo using GITHUB_TOKEN
