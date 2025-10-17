@@ -13,7 +13,7 @@ jobs:
       - name: Checkout Repository (Full History)
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Required to rewrite history
+          fetch-depth: 0  # Needed for trimming commits
 
       - name: Ping Website and Keep One-Day Log
         id: ping
@@ -27,9 +27,11 @@ jobs:
 
           DATE=$(TZ="Asia/Dhaka" date '+%Y-%m-%d %H:%M:%S %Z')
           TODAY=$(TZ="Asia/Dhaka" date '+%Y-%m-%d')
+
+          # Ping website
           STATUS=$(curl -o /dev/null -s -w "%{http_code}" "$TARGET_URL")
 
-          # Keep only today's entries
+          # Keep only today's log entries
           if [ -f status.txt ]; then
             grep "^\[$TODAY" status.txt > temp.txt || true
             mv temp.txt status.txt
@@ -37,16 +39,34 @@ jobs:
 
           echo "[$DATE] -> $STATUS" >> status.txt
 
+          # Save current status for recovery logic
+          echo "$STATUS" > last_status.txt
+
+          # Outputs for Telegram
           echo "status=$STATUS" >> $GITHUB_OUTPUT
           echo "date=$DATE" >> $GITHUB_OUTPUT
           echo "url=$TARGET_URL" >> $GITHUB_OUTPUT
+
+      - name: Read Previous Status
+        id: prev
+        run: |
+          if [ -f prev_status.txt ]; then
+            PREV_STATUS=$(cat prev_status.txt)
+          else
+            PREV_STATUS="200"
+          fi
+          echo "prev=$PREV_STATUS" >> $GITHUB_OUTPUT
 
       - name: Commit and Push Changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add status.txt
+          # Update prev_status.txt for next run
+          echo "${{ steps.ping.outputs.status }}" > prev_status.txt
+
+          git add status.txt prev_status.txt
+
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
@@ -60,7 +80,6 @@ jobs:
           KEEP=100
 
           if [ "$TOTAL" -gt "$KEEP" ]; then
-            echo "Trimming old commits... Total=$TOTAL, Keeping last $KEEP"
             OLDEST_COMMIT=$(git rev-list --max-count=$KEEP HEAD | tail -n 1)
             git checkout --orphan temp-branch $OLDEST_COMMIT
             git commit -m "Trimmed history to last $KEEP commits"
@@ -68,11 +87,9 @@ jobs:
             git branch -D temp-branch
             git gc --prune=now --aggressive
             git push origin HEAD:main --force
-          else
-            echo "No trimming needed. Total commits: $TOTAL"
           fi
 
-      - name: Send Telegram Alert (only if site is down)
+      - name: Send Telegram Alert if Site Down
         if: steps.ping.outputs.status != '200'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -82,6 +99,20 @@ jobs:
           DATE: ${{ steps.ping.outputs.date }}
         run: |
           MESSAGE="🚨 *Website Down Alert!*%0A📅 Time: ${DATE}%0A📡 Status: ${STATUS}%0A🌐 URL: ${URL}"
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d text="${MESSAGE}" \
+            -d parse_mode="Markdown"
+
+      - name: Send Telegram Recovery Notification
+        if: steps.ping.outputs.status == '200' && steps.prev.outputs.prev != '200'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          URL: ${{ steps.ping.outputs.url }}
+          DATE: ${{ steps.ping.outputs.date }}
+        run: |
+          MESSAGE="✅ *Website Recovered!*%0A📅 Time: ${DATE}%0A🌐 URL: ${URL}"
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \
             -d text="${MESSAGE}" \
