@@ -1,0 +1,29 @@
+name: Test GitHub Secrets
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-secrets:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Print Secret Presence
+        run: |
+          if [ -z "${{ secrets.TARGET_URL }}" ]; then
+            echo "❌ TARGET_URL is missing!"
+          else
+            echo "✅ TARGET_URL is set"
+          fi
+
+          if [ -z "${{ secrets.TELEGRAM_BOT_TOKEN }}" ]; then
+            echo "❌ TELEGRAM_BOT_TOKEN is missing!"
+          else
+            echo "✅ TELEGRAM_BOT_TOKEN is set"
+          fi
+
+          if [ -z "${{ secrets.TELEGRAM_CHAT_ID }}" ]; then
+            echo "❌ TELEGRAM_CHAT_ID is missing!"
+          else
+            echo "✅ TELEGRAM_CHAT_ID is set"
+          fi
