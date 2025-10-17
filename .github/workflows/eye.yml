@@ -1,5 +1,8 @@
 name: Ping Website Every 10 Minutes
 
+permissions:
+  contents: write  # Allow push to repo using GITHUB_TOKEN
+
 on:
   schedule:
     - cron: "*/10 * * * *"  # Every 10 minutes
@@ -10,24 +13,19 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository (Full History)
+      - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0  # Needed for trimming commits
 
       - name: Ping Website and Keep One-Day Log
         id: ping
         run: |
-          if [ -z "${{ secrets.TARGET_URL }}" ]; then
-            echo "❌ TARGET_URL secret not set!"
-            exit 1
-          fi
-
           DATE=$(TZ="Asia/Dhaka" date '+%Y-%m-%d %H:%M:%S %Z')
           TODAY=$(TZ="Asia/Dhaka" date '+%Y-%m-%d')
 
-          # Ping website directly using the secret
-          STATUS=$(curl -o /dev/null -s -w "%{http_code}" "${{ secrets.TARGET_URL }}")
+          # Ping website directly using secret, handle curl failure
+          STATUS=$(curl -o /dev/null -s -w "%{http_code}" "${{ secrets.TARGET_URL }}" || echo "000")
 
           # Keep only today's log entries
           if [ -f status.txt ]; then
@@ -36,8 +34,6 @@ jobs:
           fi
 
           echo "[$DATE] -> $STATUS" >> status.txt
-
-          # Save current status for recovery logic
           echo "$STATUS" > last_status.txt
 
           # Outputs for Telegram
@@ -60,6 +56,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+          # Update prev_status.txt for next run
           echo "${{ steps.ping.outputs.status }}" > prev_status.txt
 
           git add status.txt prev_status.txt
@@ -89,26 +86,15 @@ jobs:
       - name: Send Telegram Alert if Site Down
         if: steps.ping.outputs.status != '200'
         run: |
-          TELEGRAM_BOT_TOKEN="${{ secrets.TELEGRAM_BOT_TOKEN }}"
-          TELEGRAM_CHAT_ID="${{ secrets.TELEGRAM_CHAT_ID }}"
-          STATUS="${{ steps.ping.outputs.status }}"
-          DATE="${{ steps.ping.outputs.date }}"
-
-          MESSAGE="🚨 *Website Down Alert!*%0A📅 Time: ${DATE}%0A📡 Status: ${STATUS}%0A🌐 URL: ${{ secrets.TARGET_URL }}"
-          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            -d chat_id="${TELEGRAM_CHAT_ID}" \
-            -d text="${MESSAGE}" \
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d text="🚨 *Website Down Alert!*%0A📅 Time: ${{ steps.ping.outputs.date }}%0A📡 Status: ${{ steps.ping.outputs.status }}%0A🌐 URL: ${{ secrets.TARGET_URL }}" \
             -d parse_mode="Markdown"
 
       - name: Send Telegram Recovery Notification
         if: steps.ping.outputs.status == '200' && steps.prev.outputs.prev != '200'
         run: |
-          TELEGRAM_BOT_TOKEN="${{ secrets.TELEGRAM_BOT_TOKEN }}"
-          TELEGRAM_CHAT_ID="${{ secrets.TELEGRAM_CHAT_ID }}"
-          DATE="${{ steps.ping.outputs.date }}"
-
-          MESSAGE="✅ *Website Recovered!*%0A📅 Time: ${DATE}%0A🌐 URL: ${{ secrets.TARGET_URL }}"
-          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            -d chat_id="${TELEGRAM_CHAT_ID}" \
-            -d text="${MESSAGE}" \
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d text="✅ *Website Recovered!*%0A📅 Time: ${{ steps.ping.outputs.date }}%0A🌐 URL: ${{ secrets.TARGET_URL }}" \
             -d parse_mode="Markdown"
