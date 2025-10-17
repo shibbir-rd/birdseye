@@ -17,9 +17,9 @@ jobs:
 
       - name: Ping Website and Keep One-Day Log
         id: ping
-        env:
-          TARGET_URL: ${{ secrets.TARGET_URL }}
         run: |
+          TARGET_URL="${{ secrets.TARGET_URL }}"
+
           if [ -z "$TARGET_URL" ]; then
             echo "❌ TARGET_URL secret not set!"
             exit 1
@@ -91,13 +91,13 @@ jobs:
 
       - name: Send Telegram Alert if Site Down
         if: steps.ping.outputs.status != '200'
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          URL: ${{ steps.ping.outputs.url }}
-          STATUS: ${{ steps.ping.outputs.status }}
-          DATE: ${{ steps.ping.outputs.date }}
         run: |
+          TELEGRAM_BOT_TOKEN="${{ secrets.TELEGRAM_BOT_TOKEN }}"
+          TELEGRAM_CHAT_ID="${{ secrets.TELEGRAM_CHAT_ID }}"
+          URL="${{ steps.ping.outputs.url }}"
+          STATUS="${{ steps.ping.outputs.status }}"
+          DATE="${{ steps.ping.outputs.date }}"
+
           MESSAGE="🚨 *Website Down Alert!*%0A📅 Time: ${DATE}%0A📡 Status: ${STATUS}%0A🌐 URL: ${URL}"
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \
@@ -106,12 +106,12 @@ jobs:
 
       - name: Send Telegram Recovery Notification
         if: steps.ping.outputs.status == '200' && steps.prev.outputs.prev != '200'
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          URL: ${{ steps.ping.outputs.url }}
-          DATE: ${{ steps.ping.outputs.date }}
         run: |
+          TELEGRAM_BOT_TOKEN="${{ secrets.TELEGRAM_BOT_TOKEN }}"
+          TELEGRAM_CHAT_ID="${{ secrets.TELEGRAM_CHAT_ID }}"
+          URL="${{ steps.ping.outputs.url }}"
+          DATE="${{ steps.ping.outputs.date }}"
+
           MESSAGE="✅ *Website Recovered!*%0A📅 Time: ${DATE}%0A🌐 URL: ${URL}"
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \
